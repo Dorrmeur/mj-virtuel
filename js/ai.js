@@ -57,8 +57,10 @@ function buildLocalNarration(userMessage) {
 }
 
 async function callGemini(settings, contextText, history, userMessage) {
-  const model = settings.model || 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const preferred = settings.model || 'gemini-3.8-flash';
+  const candidates = [preferred, 'gemini-flash-latest', 'gemini-2.5-flash']
+    .filter((name, index, list) => list.indexOf(name) === index);
+
   const contents = history
     .map((entry) => ({ role: entry.role === 'player' ? 'user' : 'model', parts: [{ text: entry.text }] }))
     .concat([{ role: 'user', parts: [{ text: `${contextText}\n\nAction du joueur: ${userMessage}` }] }]);
@@ -68,27 +70,34 @@ async function callGemini(settings, contextText, history, userMessage) {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }
   });
 
-  let response = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey },
-      body
-    });
-    if (response.status !== 503 && response.status !== 429) break;
-    await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+  let lastError = '';
+  for (const model of candidates) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey },
+        body
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const parts = data.candidates && data.candidates[0] && data.candidates[0].content
+          ? data.candidates[0].content.parts : [];
+        return parts.map((part) => part.text || '').join('').trim() || 'Réponse vide du modèle.';
+      }
+
+      let detail = '';
+      try { detail = (await response.json()).error.message; } catch (e) { /* ignore */ }
+      lastError = `Erreur Gemini (${response.status}, ${model}) : ${detail || 'aucun détail'}`;
+
+      if (response.status !== 503 && response.status !== 429) return lastError;
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    }
   }
 
-  if (!response.ok) {
-    let detail = '';
-    try { detail = (await response.json()).error.message; } catch (e) { /* ignore */ }
-    return `Erreur Gemini (${response.status}) : ${detail || 'aucun détail'}`;
-  }
-
-  const data = await response.json();
-  const parts = data.candidates && data.candidates[0] && data.candidates[0].content
-    ? data.candidates[0].content.parts : [];
-  return parts.map((part) => part.text || '').join('').trim() || 'Réponse vide du modèle.';
+  return lastError;
 }
 
 async function callOpenAiCompatible(settings, contextText, history, userMessage) {
