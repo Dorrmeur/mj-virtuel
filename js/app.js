@@ -1,6 +1,6 @@
 // Application layer: state binding, rendering and user interactions.
 
-import { rollExpression, rollInitiativeScore } from './dice.js';
+import { rollExpression, rollInitiativeScore, extractRollRequest, resolveCheck } from './dice.js';
 import { loadState, saveState, downloadState, readStateFile } from './store.js';
 import { askGameMaster, generateLocalIdea } from './ai.js';
 
@@ -37,16 +37,46 @@ function appendLog(role, text) {
   renderLog();
 }
 
+let m_lastTypedIndex = -1;
+
 function renderLog() {
   dom.storyLog.innerHTML = '';
-  appState.log.forEach((entry) => {
-    const authorLabel = entry.role === 'player' ? 'Joueur' : (entry.role === 'system' ? 'Système' : 'MJ');
+
+  appState.log.forEach((entry, index) => {
+    const authorLabel = entry.role === 'player' ? 'Joueur' : (entry.role === 'system' ? 'Les des' : 'Le MJ');
     const node = document.createElement('div');
     node.className = `entry ${entry.role}`;
     node.innerHTML = `<span class="author">${authorLabel}</span>`;
-    node.appendChild(document.createTextNode(entry.text));
+
+    const body = document.createElement('span');
+    body.className = 'entryBody';
+    node.appendChild(body);
+
+    const isFreshGmEntry = entry.role === 'gm'
+      && index === appState.log.length - 1
+      && index > m_lastTypedIndex
+      && appState.settings.typewriter;
+
+    if (isFreshGmEntry) {
+      m_lastTypedIndex = index;
+      typewriteInto(body, entry.text);
+    } else {
+      body.textContent = entry.text;
+    }
+
+    const request = entry.role === 'gm' ? extractRollRequest(entry.text) : null;
+    if (request !== null) {
+      const rollButton = document.createElement('button');
+      rollButton.type = 'button';
+      rollButton.className = 'rollPrompt';
+      rollButton.textContent = `Lancer ${request.formula} contre DD ${request.difficulty}`;
+      rollButton.addEventListener('click', () => resolveRollRequest(request, rollButton));
+      node.appendChild(rollButton);
+    }
+
     dom.storyLog.appendChild(node);
   });
+
   dom.storyLog.scrollTop = dom.storyLog.scrollHeight;
 }
 
@@ -160,6 +190,81 @@ function buildContext() {
   return context;
 }
 
+// Reveals the game master narration character by character.
+function typewriteInto(targetNode, text) {
+  const characters = Array.from(text);
+  let cursor = 0;
+
+  targetNode.textContent = '';
+  const timer = window.setInterval(() => {
+    if (cursor >= characters.length) {
+      window.clearInterval(timer);
+    } else {
+      targetNode.textContent += characters[cursor];
+      cursor += 1;
+      dom.storyLog.scrollTop = dom.storyLog.scrollHeight;
+    }
+  }, 18);
+}
+
+// Rolls a game master request and feeds the qualified result back into the story.
+function resolveRollRequest(request, sourceButton) {
+  const outcome = resolveCheck(request.formula, request.difficulty);
+
+  if (outcome.valid) {
+    sourceButton.disabled = true;
+    sourceButton.textContent = `${outcome.total} contre ${request.difficulty} : ${outcome.tier}`;
+
+    appState.diceHistory.unshift({
+      formula: request.formula,
+      total: outcome.total,
+      detail: outcome.detail
+    });
+    appState.diceHistory = appState.diceHistory.slice(0, 20);
+    persist();
+    renderDiceHistory();
+
+    const summary = `${request.formula} = ${outcome.total} contre DD ${request.difficulty}`
+      + ` (${outcome.detail}) : ${outcome.tier}.`;
+    appState.log.push({ role: 'system', text: summary, at: new Date().toISOString() });
+    persist();
+
+    if (appState.settings.autoRoll) {
+      submitPlayerAction(`Resultat du jet: ${summary} Decris la consequence immediate.`, true);
+    } else {
+      renderLog();
+    }
+  }
+}
+
+async function submitPlayerAction(text, isSystemDriven) {
+  if (isSystemDriven !== true) {
+    appendLog('player', text);
+  } else {
+    renderLog();
+  }
+
+  dom.sendButton.disabled = true;
+  dom.actionInput.disabled = true;
+  dom.sendButton.textContent = 'Le MJ prepare la suite';
+
+  const history = appState.log
+    .filter((entry) => entry.role !== 'system')
+    .slice(-MAX_HISTORY_ENTRIES);
+
+  try {
+    const narration = await askGameMaster(appState.settings, buildContext(), history, text);
+    appendLog('gm', narration);
+  } catch (error) {
+    appendLog('system', `La liaison avec le MJ est rompue : ${error.message}`);
+  }
+
+  dom.sendButton.disabled = false;
+  dom.actionInput.disabled = false;
+  dom.sendButton.textContent = 'Agir';
+  dom.actionInput.focus();
+}
+
 async function submitPlayerAction(text) {
   appendLog('player', text);
   dom.sendButton.disabled = true;
@@ -266,5 +371,21 @@ function bindEvents() {
   });
 }
 
+// Reveals the game master narration character by character.
+function typewriteInto(targetNode, text) {
+  const characters = Array.from(text);
+  let cursor = 0;
+
+  targetNode.textContent = '';
+  const timer = window.setInterval(() => {
+    if (cursor >= characters.length) {
+      window.clearInterval(timer);
+    } else {
+      targetNode.textContent += characters[cursor];
+      cursor += 1;
+      dom.storyLog.scrollTop = dom.storyLog.scrollHeight;
+    }
+  }, 18);
+}
 bindEvents();
 renderAll();
