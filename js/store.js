@@ -11,7 +11,7 @@ function createDefaultState() {
     initiative: { order: [], currentIndex: 0 },
     settings: {
       provider: 'local',
-      model: 'gemini-3.8-flash',
+      model: 'gemini-3.6-flash',
       baseUrl: '',
       apiKey: '',
       typewriter: true,
