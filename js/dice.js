@@ -37,19 +37,20 @@ function evaluateToken(token) {
   return result;
 }
 
-// Returns { valid, total, detail } for a full dice expression.
+// Returns { valid, total, rolls, detail } for a full dice expression.
 export function rollExpression(expression) {
   const tokens = tokenize(expression);
   const evaluated = tokens.map((token) => evaluateToken(token));
   const isValid = tokens.length > 0 && evaluated.every((item) => item !== null);
-  let outcome = { valid: false, total: 0, detail: 'Expression invalide' };
+  let outcome = { valid: false, total: 0, rolls: [], detail: 'Expression invalide' };
 
   if (isValid) {
     const total = evaluated.reduce((accumulator, item) => accumulator + item.value, 0);
+    const rolls = evaluated.reduce((accumulator, item) => accumulator.concat(item.rolls), []);
     const detail = evaluated
       .map((item) => (item.rolls.length > 0 ? `${item.label}[${item.rolls.join(', ')}]` : item.label))
       .join(' + ');
-    outcome = { valid: true, total, detail };
+    outcome = { valid: true, total, rolls, detail };
   }
 
   return outcome;
@@ -59,4 +60,51 @@ export function rollExpression(expression) {
 export function rollInitiativeScore(modifier) {
   const score = rollSingleDie(20) + Number(modifier || 0);
   return score;
+}
+
+const ROLL_REQUEST_PATTERN = /JET\s*:\s*(\d*d\d+(?:\s*[+-]\s*\d+)?)\s*(?:contre)?\s*(?:DD|DIFFICULTE)\s*(\d+)/i;
+
+// Parses a game master roll demand such as "JET: 1d20+2 contre DD 13".
+export function extractRollRequest(text) {
+  const match = ROLL_REQUEST_PATTERN.exec(String(text));
+  let request = null;
+
+  if (match !== null) {
+    request = {
+      formula: match[1].replace(/\s+/g, ''),
+      difficulty: Number(match[2])
+    };
+  }
+
+  return request;
+}
+
+// Resolves a skill check and qualifies the outcome for narrative purposes.
+export function resolveCheck(formula, difficulty) {
+  const roll = rollExpression(formula);
+  let outcome = { valid: false, total: 0, detail: '', tier: '', margin: 0 };
+
+  if (roll.valid) {
+    const naturalDie = roll.rolls.length > 0 ? roll.rolls[0] : 0;
+    const margin = roll.total - difficulty;
+    let tier = '';
+
+    if (naturalDie === 1) {
+      tier = 'ECHEC CRITIQUE';
+    } else if (naturalDie === 20) {
+      tier = 'REUSSITE CRITIQUE';
+    } else if (margin < -5) {
+      tier = 'ECHEC CUISANT';
+    } else if (margin < 0) {
+      tier = 'ECHEC DE JUSTESSE';
+    } else if (margin < 5) {
+      tier = 'REUSSITE DE JUSTESSE';
+    } else {
+      tier = 'FRANCHE REUSSITE';
+    }
+
+    outcome = { valid: true, total: roll.total, detail: roll.detail, tier, margin };
+  }
+
+  return outcome;
 }
