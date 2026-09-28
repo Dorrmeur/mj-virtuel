@@ -265,26 +265,6 @@ async function submitPlayerAction(text, isSystemDriven) {
   dom.actionInput.focus();
 }
 
-async function submitPlayerAction(text) {
-  appendLog('player', text);
-  dom.sendButton.disabled = true;
-  dom.sendButton.textContent = 'Le MJ réfléchit...';
-
-  const history = appState.log
-    .filter((entry) => entry.role !== 'system')
-    .slice(-MAX_HISTORY_ENTRIES, -1);
-
-  try {
-    const narration = await askGameMaster(appState.settings, buildContext(), history, text);
-    appendLog('gm', narration);
-  } catch (error) {
-    appendLog('system', `Erreur réseau : ${error.message}`);
-  }
-
-  dom.sendButton.disabled = false;
-  dom.sendButton.textContent = 'Envoyer';
-}
-
 function openSettings() {
   document.getElementById('inputProvider').value = appState.settings.provider;
   document.getElementById('inputModel').value = appState.settings.model;
