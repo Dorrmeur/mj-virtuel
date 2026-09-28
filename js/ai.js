@@ -58,27 +58,37 @@ function buildLocalNarration(userMessage) {
 
 async function callGemini(settings, contextText, history, userMessage) {
   const model = settings.model || 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(settings.apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const contents = history
     .map((entry) => ({ role: entry.role === 'player' ? 'user' : 'model', parts: [{ text: entry.text }] }))
     .concat([{ role: 'user', parts: [{ text: `${contextText}\n\nAction du joueur: ${userMessage}` }] }]);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents, systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] } })
+  const body = JSON.stringify({
+    contents,
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }
   });
 
-  let output = '';
-  if (response.ok === false) {
-    output = `Erreur API Gemini (${response.status}). Vérifie la clé ou le modèle.`;
-  } else {
-    const data = await response.json();
-    const parts = data.candidates && data.candidates[0] ? data.candidates[0].content.parts : [];
-    output = parts.map((part) => part.text || '').join('').trim() || 'Réponse vide du modèle.';
+  let response = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey },
+      body
+    });
+    if (response.status !== 503 && response.status !== 429) break;
+    await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
   }
 
-  return output;
+  if (!response.ok) {
+    let detail = '';
+    try { detail = (await response.json()).error.message; } catch (e) { /* ignore */ }
+    return `Erreur Gemini (${response.status}) : ${detail || 'aucun détail'}`;
+  }
+
+  const data = await response.json();
+  const parts = data.candidates && data.candidates[0] && data.candidates[0].content
+    ? data.candidates[0].content.parts : [];
+  return parts.map((part) => part.text || '').join('').trim() || 'Réponse vide du modèle.';
 }
 
 async function callOpenAiCompatible(settings, contextText, history, userMessage) {
