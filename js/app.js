@@ -5,7 +5,13 @@ import { loadState, saveState, downloadState, readStateFile } from './store.js';
 import { askGameMaster, generateLocalIdea } from './ai.js';
 
 const MAX_HISTORY_ENTRIES = 12;
+const TYPEWRITER_DELAY = 18;
+
 const appState = loadState();
+
+// Module private members.
+let m_lastTypedIndex = -1;
+let m_typewriterTimer = null;
 
 const dom = {
   universe: document.getElementById('inputUniverse'),
@@ -31,22 +37,43 @@ function createId() {
   return id;
 }
 
-function appendLog(role, text) {
-  appState.log.push({ role, text, at: new Date().toISOString() });
-  persist();
-  renderLog();
-}
+// Reveals the game master narration character by character.
+function typewriteInto(targetNode, text) {
+  const characters = Array.from(text);
+  let cursor = 0;
 
-let m_lastTypedIndex = -1;
+  if (m_typewriterTimer !== null) {
+    window.clearInterval(m_typewriterTimer);
+  }
+
+  targetNode.textContent = '';
+  m_typewriterTimer = window.setInterval(() => {
+    if (cursor >= characters.length) {
+      window.clearInterval(m_typewriterTimer);
+      m_typewriterTimer = null;
+    } else {
+      targetNode.textContent += characters[cursor];
+      cursor += 1;
+      dom.storyLog.scrollTop = dom.storyLog.scrollHeight;
+    }
+  }, TYPEWRITER_DELAY);
+}
 
 function renderLog() {
   dom.storyLog.innerHTML = '';
 
   appState.log.forEach((entry, index) => {
-    const authorLabel = entry.role === 'player' ? 'Joueur' : (entry.role === 'system' ? 'Les des' : 'Le MJ');
+    const authorLabel = entry.role === 'player'
+      ? 'Joueur'
+      : (entry.role === 'system' ? 'Les des' : 'Le MJ');
+
     const node = document.createElement('div');
     node.className = `entry ${entry.role}`;
-    node.innerHTML = `<span class="author">${authorLabel}</span>`;
+
+    const author = document.createElement('span');
+    author.className = 'author';
+    author.textContent = authorLabel;
+    node.appendChild(author);
 
     const body = document.createElement('span');
     body.className = 'entryBody';
@@ -55,7 +82,7 @@ function renderLog() {
     const isFreshGmEntry = entry.role === 'gm'
       && index === appState.log.length - 1
       && index > m_lastTypedIndex
-      && appState.settings.typewriter;
+      && appState.settings.typewriter === true;
 
     if (isFreshGmEntry) {
       m_lastTypedIndex = index;
@@ -65,12 +92,12 @@ function renderLog() {
     }
 
     const request = entry.role === 'gm' ? extractRollRequest(entry.text) : null;
-    if (request !== null) {
+    if (request !== null && entry.resolved !== true) {
       const rollButton = document.createElement('button');
       rollButton.type = 'button';
       rollButton.className = 'rollPrompt';
       rollButton.textContent = `Lancer ${request.formula} contre DD ${request.difficulty}`;
-      rollButton.addEventListener('click', () => resolveRollRequest(request, rollButton));
+      rollButton.addEventListener('click', () => resolveRollRequest(request, entry, rollButton));
       node.appendChild(rollButton);
     }
 
@@ -80,22 +107,34 @@ function renderLog() {
   dom.storyLog.scrollTop = dom.storyLog.scrollHeight;
 }
 
+function appendLog(role, text) {
+  appState.log.push({ role, text, at: new Date().toISOString() });
+  persist();
+  renderLog();
+}
+
 function renderCharacters() {
   dom.characterList.innerHTML = '';
+
   appState.characters.forEach((character) => {
     const item = document.createElement('li');
-    item.textContent = `${character.name} - ${character.role || 'aventurier'} - ${character.hp} PV`;
+    const label = document.createElement('span');
+    label.textContent = `${character.name} - ${character.role || 'aventurier'} - ${character.hp} PV`;
+    item.appendChild(label);
+
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
     removeButton.textContent = 'x';
     removeButton.addEventListener('click', () => removeCharacter(character.id));
     item.appendChild(removeButton);
+
     dom.characterList.appendChild(item);
   });
 }
 
 function renderDiceHistory() {
   dom.diceHistory.innerHTML = '';
+
   appState.diceHistory.slice(0, 8).forEach((roll) => {
     const item = document.createElement('li');
     item.textContent = `${roll.formula} = ${roll.total} (${roll.detail})`;
@@ -105,6 +144,7 @@ function renderDiceHistory() {
 
 function renderInitiative() {
   dom.initiativeList.innerHTML = '';
+
   appState.initiative.order.forEach((slot, index) => {
     const item = document.createElement('li');
     item.textContent = `${slot.name} : ${slot.score}`;
@@ -133,9 +173,11 @@ function renderAll() {
 }
 
 function addCharacter(name, role, hp) {
-  appState.characters.push({ id: createId(), name, role, hp: Number(hp) || 10 });
-  persist();
-  renderCharacters();
+  if (name.length > 0) {
+    appState.characters.push({ id: createId(), name, role, hp: Number(hp) || 10 });
+    persist();
+    renderCharacters();
+  }
 }
 
 function removeCharacter(characterId) {
@@ -148,6 +190,7 @@ function removeCharacter(characterId) {
 
 function performRoll(formula) {
   const result = rollExpression(formula);
+
   if (result.valid) {
     appState.diceHistory.unshift({ formula, total: result.total, detail: result.detail });
     appState.diceHistory = appState.diceHistory.slice(0, 20);
@@ -155,7 +198,7 @@ function performRoll(formula) {
     renderDiceHistory();
     appendLog('system', `Jet ${formula} : ${result.total} (${result.detail})`);
   } else {
-    appendLog('system', `Expression de dés invalide : ${formula}`);
+    appendLog('system', `Expression de des invalide : ${formula}`);
   }
 }
 
@@ -170,6 +213,7 @@ function rollInitiative() {
 
 function nextTurn() {
   const total = appState.initiative.order.length;
+
   if (total > 0) {
     appState.initiative.currentIndex = (appState.initiative.currentIndex + 1) % total;
     persist();
@@ -180,40 +224,26 @@ function nextTurn() {
 function buildContext() {
   const roster = appState.characters
     .map((character) => `${character.name} (${character.role || 'aventurier'}, ${character.hp} PV)`)
-    .join(' ; ') || 'aucun personnage enregistré';
+    .join(' ; ') || 'aucun personnage enregistre';
+
   const context = [
-    `Univers: ${appState.campaign.universe || 'non défini'}`,
+    `Univers: ${appState.campaign.universe || 'non defini'}`,
     `Ton: ${appState.campaign.tone}`,
-    `Scène actuelle: ${appState.campaign.scene || 'début de session'}`,
+    `Scene actuelle: ${appState.campaign.scene || 'debut de session'}`,
     `Groupe: ${roster}`
   ].join('\n');
+
   return context;
 }
 
-// Reveals the game master narration character by character.
-function typewriteInto(targetNode, text) {
-  const characters = Array.from(text);
-  let cursor = 0;
-
-  targetNode.textContent = '';
-  const timer = window.setInterval(() => {
-    if (cursor >= characters.length) {
-      window.clearInterval(timer);
-    } else {
-      targetNode.textContent += characters[cursor];
-      cursor += 1;
-      dom.storyLog.scrollTop = dom.storyLog.scrollHeight;
-    }
-  }, 18);
-}
-
 // Rolls a game master request and feeds the qualified result back into the story.
-function resolveRollRequest(request, sourceButton) {
+function resolveRollRequest(request, logEntry, sourceButton) {
   const outcome = resolveCheck(request.formula, request.difficulty);
 
   if (outcome.valid) {
     sourceButton.disabled = true;
     sourceButton.textContent = `${outcome.total} contre ${request.difficulty} : ${outcome.tier}`;
+    logEntry.resolved = true;
 
     appState.diceHistory.unshift({
       formula: request.formula,
@@ -221,7 +251,6 @@ function resolveRollRequest(request, sourceButton) {
       detail: outcome.detail
     });
     appState.diceHistory = appState.diceHistory.slice(0, 20);
-    persist();
     renderDiceHistory();
 
     const summary = `${request.formula} = ${outcome.total} contre DD ${request.difficulty}`
@@ -229,7 +258,7 @@ function resolveRollRequest(request, sourceButton) {
     appState.log.push({ role: 'system', text: summary, at: new Date().toISOString() });
     persist();
 
-    if (appState.settings.autoRoll) {
+    if (appState.settings.autoRoll === true) {
       submitPlayerAction(`Resultat du jet: ${summary} Decris la consequence immediate.`, true);
     } else {
       renderLog();
@@ -238,10 +267,10 @@ function resolveRollRequest(request, sourceButton) {
 }
 
 async function submitPlayerAction(text, isSystemDriven) {
-  if (isSystemDriven !== true) {
-    appendLog('player', text);
-  } else {
+  if (isSystemDriven === true) {
     renderLog();
+  } else {
+    appendLog('player', text);
   }
 
   dom.sendButton.disabled = true;
@@ -271,6 +300,15 @@ function openSettings() {
   document.getElementById('inputBaseUrl').value = appState.settings.baseUrl;
   document.getElementById('inputApiKey').value = appState.settings.apiKey;
   dom.settingsDialog.showModal();
+}
+
+function saveSettings() {
+  appState.settings.provider = document.getElementById('inputProvider').value;
+  appState.settings.model = document.getElementById('inputModel').value.trim();
+  appState.settings.baseUrl = document.getElementById('inputBaseUrl').value.trim();
+  appState.settings.apiKey = document.getElementById('inputApiKey').value.trim();
+  persist();
+  renderModeBadge();
 }
 
 function bindEvents() {
@@ -317,24 +355,16 @@ function bindEvents() {
     const text = dom.actionInput.value.trim();
     if (text.length > 0) {
       dom.actionInput.value = '';
-      submitPlayerAction(text);
+      submitPlayerAction(text, false);
     }
   });
 
   document.getElementById('btnRollInitiative').addEventListener('click', rollInitiative);
   document.getElementById('btnNextTurn').addEventListener('click', nextTurn);
   document.getElementById('btnSettings').addEventListener('click', openSettings);
+  document.getElementById('btnSaveSettings').addEventListener('click', saveSettings);
   document.getElementById('btnExport').addEventListener('click', () => downloadState(appState));
   document.getElementById('btnImport').addEventListener('click', () => dom.fileImport.click());
-
-  document.getElementById('btnSaveSettings').addEventListener('click', () => {
-    appState.settings.provider = document.getElementById('inputProvider').value;
-    appState.settings.model = document.getElementById('inputModel').value.trim();
-    appState.settings.baseUrl = document.getElementById('inputBaseUrl').value.trim();
-    appState.settings.apiKey = document.getElementById('inputApiKey').value.trim();
-    persist();
-    renderModeBadge();
-  });
 
   dom.fileImport.addEventListener('change', async (event) => {
     const file = event.target.files[0];
@@ -342,6 +372,7 @@ function bindEvents() {
       try {
         const imported = await readStateFile(file);
         Object.assign(appState, imported);
+        m_lastTypedIndex = appState.log.length;
         persist();
         renderAll();
       } catch (error) {
@@ -351,21 +382,16 @@ function bindEvents() {
   });
 }
 
-// Reveals the game master narration character by character.
-function typewriteInto(targetNode, text) {
-  const characters = Array.from(text);
-  let cursor = 0;
-
-  targetNode.textContent = '';
-  const timer = window.setInterval(() => {
-    if (cursor >= characters.length) {
-      window.clearInterval(timer);
-    } else {
-      targetNode.textContent += characters[cursor];
-      cursor += 1;
-      dom.storyLog.scrollTop = dom.storyLog.scrollHeight;
-    }
-  }, 18);
+// Bind listeners first so that forms never fall back to a native page reload.
+function bootstrap() {
+  try {
+    bindEvents();
+    m_lastTypedIndex = appState.log.length;
+    renderAll();
+  } catch (error) {
+    window.console.error('Bootstrap failure', error);
+    dom.storyLog.textContent = `Erreur de demarrage : ${error.message}`;
+  }
 }
-bindEvents();
-renderAll();
+
+bootstrap();
