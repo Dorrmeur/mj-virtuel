@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MJ Virtuel</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="appHeader">
+    <h1>MJ Virtuel</h1>
+    <div class="headerActions">
+      <span id="modeBadge" class="badge">Mode local</span>
+      <button id="btnSettings" type="button">Paramètres</button>
+      <button id="btnExport" type="button">Exporter</button>
+      <button id="btnImport" type="button">Importer</button>
+      <input type="file" id="fileImport" accept="application/json" hidden>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <section class="block">
+        <h2>Campagne</h2>
+        <label>Univers<input type="text" id="inputUniverse" placeholder="Dark fantasy, cyberpunk..."></label>
+        <label>Ton<select id="inputTone">
+          <option value="heroique">Héroïque</option>
+          <option value="sombre">Sombre</option>
+          <option value="humoristique">Humoristique</option>
+          <option value="enquete">Enquête</option>
+        </select></label>
+        <label>Scène actuelle<textarea id="inputScene" rows="3"></textarea></label>
+      </section>
+
+      <section class="block">
+        <h2>Personnages</h2>
+        <form id="formCharacter" class="inlineForm">
+          <input type="text" id="inputCharName" placeholder="Nom" required>
+          <input type="text" id="inputCharRole" placeholder="Archétype">
+          <input type="number" id="inputCharHp" placeholder="PV" value="10" min="0">
+          <button type="submit">Ajouter</button>
+        </form>
+        <ul id="characterList" class="list"></ul>
+      </section>
+    </aside>
+
+    <section class="panel panelCenter">
+      <div id="storyLog" class="storyLog"></div>
+      <form id="formAction" class="actionBar">
+        <input type="text" id="inputAction" placeholder="Que fait votre personnage ?" autocomplete="off">
+        <button type="submit" id="btnSend">Envoyer</button>
+      </form>
+    </section>
+
+    <aside class="panel">
+      <section class="block">
+        <h2>Dés</h2>
+        <form id="formDice" class="inlineForm">
+          <input type="text" id="inputDice" value="1d20" placeholder="2d6+3">
+          <button type="submit">Lancer</button>
+        </form>
+        <div class="quickDice">
+          <button type="button" class="diceShortcut" data-formula="1d4">d4</button>
+          <button type="button" class="diceShortcut" data-formula="1d6">d6</button>
+          <button type="button" class="diceShortcut" data-formula="1d8">d8</button>
+          <button type="button" class="diceShortcut" data-formula="1d10">d10</button>
+          <button type="button" class="diceShortcut" data-formula="1d20">d20</button>
+          <button type="button" class="diceShortcut" data-formula="1d100">d100</button>
+        </div>
+        <ul id="diceHistory" class="list small"></ul>
+      </section>
+
+      <section class="block">
+        <h2>Initiative</h2>
+        <button type="button" id="btnRollInitiative">Relancer l'ordre</button>
+        <button type="button" id="btnNextTurn">Tour suivant</button>
+        <ol id="initiativeList" class="list"></ol>
+      </section>
+
+      <section class="block">
+        <h2>Générateurs</h2>
+        <button type="button" class="generatorButton" data-kind="npc">PNJ</button>
+        <button type="button" class="generatorButton" data-kind="place">Lieu</button>
+        <button type="button" class="generatorButton" data-kind="twist">Complication</button>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" class="settingsForm">
+      <h2>Paramètres du moteur</h2>
+      <label>Fournisseur<select id="inputProvider">
+        <option value="local">Local (hors-ligne)</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="openai">OpenAI compatible</option>
+      </select></label>
+      <label>Modèle<input type="text" id="inputModel" placeholder="gemini-2.5-flash"></label>
+      <label>URL de base (OpenAI compatible)<input type="text" id="inputBaseUrl" placeholder="https://api.openai.com/v1"></label>
+      <label>Clé API<input type="password" id="inputApiKey" placeholder="Stockée uniquement dans ce navigateur"></label>
+      <p class="warning">La clé est enregistrée en local. Ne l'utilise pas sur un poste partagé.</p>
+      <menu>
+        <button value="cancel">Annuler</button>
+        <button value="save" id="btnSaveSettings">Enregistrer</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
