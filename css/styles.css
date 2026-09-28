@@ -116,6 +116,51 @@ input, select, textarea {
 .entry.system .author { color: var(--colorMuted); }
 .entry.system { color: var(--colorMuted); font-style: italic; }
 
+.entry.gm .entryBody {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #efe6d2;
+}
+
+.entry.gm {
+  border-left: 2px solid var(--colorAccent);
+  padding-left: 12px;
+}
+
+.entry.player .entryBody { color: #bcd2f5; }
+
+.entry.system {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-align: center;
+  border-top: 1px dashed var(--colorBorder);
+  border-bottom: 1px dashed var(--colorBorder);
+  padding: 6px 0;
+}
+
+.rollPrompt {
+  display: block;
+  margin-top: 10px;
+  background: transparent;
+  border: 1px solid var(--colorAccent);
+  color: var(--colorAccent);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.rollPrompt:disabled {
+  border-color: var(--colorBorder);
+  color: var(--colorMuted);
+  cursor: default;
+}
+
+.storyLog {
+  max-width: 72ch;
+  margin: 0 auto;
+  padding: 8px 4px;
+}
+
 .actionBar { display: flex; gap: 8px; padding-top: 10px; border-top: 1px solid var(--colorBorder); }
 .actionBar input { flex: 1; }
 
