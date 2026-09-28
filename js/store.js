@@ -9,11 +9,17 @@ function createDefaultState() {
     log: [],
     diceHistory: [],
     initiative: { order: [], currentIndex: 0 },
-    settings: { provider: 'local', model: 'gemini-2.5-flash', baseUrl: '', apiKey: '' }
+    settings: {
+      provider: 'local',
+      model: 'gemini-3-flash',
+      baseUrl: '',
+      apiKey: '',
+      typewriter: true,
+      autoRoll: true
+    }
   };
   return defaultState;
 }
-
 export function loadState() {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   let loaded = createDefaultState();
