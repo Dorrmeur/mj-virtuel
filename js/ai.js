@@ -58,9 +58,8 @@ function buildLocalNarration(userMessage) {
 
 async function callGemini(settings, contextText, history, userMessage) {
   const preferred = settings.model || 'gemini-3.8-flash';
-  const candidates = [preferred, 'gemini-flash-latest', 'gemini-2.5-flash']
-    .filter((name, index, list) => list.indexOf(name) === index);
-
+const candidates = [preferred, 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.8-flash']
+  .filter((name, index, list) => list.indexOf(name) === index);
   const contents = history
     .map((entry) => ({ role: entry.role === 'player' ? 'user' : 'model', parts: [{ text: entry.text }] }))
     .concat([{ role: 'user', parts: [{ text: `${contextText}\n\nAction du joueur: ${userMessage}` }] }]);
